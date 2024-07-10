@@ -1,0 +1,40 @@
+{
+  "pluginAlias": "UnifiAccessPlatform",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "required": true,
+        "default": "Unifi Access Platform"
+      },
+      "apiToken": {
+        "title": "API Token",
+        "type": "string",
+        "required": true
+      },
+      "wsUrl": {
+        "title": "WebSocket URL",
+        "type": "string",
+        "format": "uri",
+        "required": true
+      },
+      "apiUrl": {
+        "title": "API Base URL",
+        "type": "string",
+        "format": "uri",
+        "required": true
+      },
+      "baseUrl": {
+        "title": "Base URL",
+        "type": "string",
+        "format": "uri",
+        "required": true,
+        "default": "https://ip_controller:12445/"
+      }
+    }
+  }
+}
