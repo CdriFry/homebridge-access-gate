@@ -2,20 +2,21 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UnifiAccessory = void 0;
 class UnifiAccessory {
-    constructor(platform, accessory, api) {
+    constructor(platform, accessory, api, log) {
         this.platform = platform;
         this.accessory = accessory;
         this.api = api;
+        this.log = log;
         const device = accessory.context.device;
-        if (device.isLocked === undefined) {
-            device.isLocked = true; // Fermer par défaut
-        }
+        //if (device.isLocked === undefined) {
+        // device.isLocked = true; // Fermer par défaut
+        //}
         this.service = this.determineService(device);
         // Set accessory information
         this.accessory.getService(this.api.hap.Service.AccessoryInformation)
             .setCharacteristic(this.api.hap.Characteristic.Manufacturer, 'Soundimage')
             .setCharacteristic(this.api.hap.Characteristic.Model, 'Access HUB')
-            .setCharacteristic(this.api.hap.Characteristic.SerialNumber, '06072024');
+            .setCharacteristic(this.api.hap.Characteristic.SerialNumber, '110720241011');
     }
     determineService(device) {
         if (device.type === 'UAH-DOOR' || device.type === 'UAH' || device.type === 'door') {
@@ -50,7 +51,6 @@ class UnifiAccessory {
     }
     // Méthodes pour gérer les états et événements spécifiques à l'accessoire
     handleDoorChangeEvent(event) {
-        const device = this.accessory.context.device;
         // Mettre à jour l'état du contact selon l'événement reçu
         const contactState = event.data.status === 'close'
             ? this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED
@@ -62,12 +62,11 @@ class UnifiAccessory {
     }
     handleLockCurrentStateGet() {
         const device = this.accessory.context;
-        console.log('Accessory context:', this.accessory.context);
-        console.log(device.lockState);
+        this.log.debug('Accessory context:', this.accessory.context);
         const lockState = device.lockState === 'locked'
             ? this.api.hap.Characteristic.LockCurrentState.SECURED
             : this.api.hap.Characteristic.LockCurrentState.UNSECURED;
-        this.platform.logWarning(`Lock current state get: ${lockState}`);
+        this.log.debug(`Lock current state get: ${lockState}`);
         return lockState;
     }
     handleLockTargetStateGet() {
@@ -75,16 +74,16 @@ class UnifiAccessory {
         const targetLockState = device.lockState === 'locked'
             ? this.api.hap.Characteristic.LockTargetState.SECURED
             : this.api.hap.Characteristic.LockTargetState.UNSECURED;
-        this.platform.logWarning(`Lock target state get: ${targetLockState}`);
+        this.log.debug(`Lock target state get: ${targetLockState}`);
         return targetLockState;
     }
     async handleLockTargetStateSet(value, callback) {
         try {
-            const device = this.accessory.context.device;
+            //const device = this.accessory.context.device;
             const isSecured = value === this.api.hap.Characteristic.LockTargetState.SECURED;
             this.platform.logWarning(`Lock target state set: ${isSecured ? 'SECURED' : 'UNSECURED'}`);
             // Update the lock state in the device context
-            device.isLocked = isSecured;
+            //device.isLocked = isSecured;
             // Update the current lock state to reflect the change
             const lockService = this.accessory.getService(this.api.hap.Service.LockMechanism);
             if (lockService) {
@@ -112,7 +111,6 @@ class UnifiAccessory {
             this.platform.logWarning('Device context is missing');
             return;
         }
-        const device = deviceContext.device;
         // Mettre à jour l'état de verrouillage actuel à partir du contexte
         if (this.service instanceof this.api.hap.Service.LockMechanism) {
             const lockState = deviceContext.lockState === 'locked'

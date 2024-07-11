@@ -16,24 +16,12 @@
         "type": "string",
         "required": true
       },
-      "wsUrl": {
-        "title": "WebSocket URL",
-        "type": "string",
-        "format": "uri",
-        "required": true
-      },
-      "apiUrl": {
-        "title": "API Base URL",
-        "type": "string",
-        "format": "uri",
-        "required": true
-      },
       "baseUrl": {
         "title": "Base URL",
         "type": "string",
         "format": "uri",
         "required": true,
-        "default": "https://ip_controller:12445/"
+        "default": "https://ip_controller:12445"
       }
     }
   }

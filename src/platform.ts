@@ -24,20 +24,6 @@ interface EventData {
   data?: any; // Définissez un type plus précis si possible pour `data`
 }
 
-interface DoorChangeEvent {
-  event: 'access.dps_change';
-  receiver_id: string;
-  event_object_id: string;
-  save_to_history: boolean;
-  data: {
-    door_id: string;
-    door_name: string;
-    status: 'open' | 'close'; // Status peut être 'open' ou 'close'
-    type: 'dps_change';
-  };
-}
-
-
 
 export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
   private readonly log: Logger;
@@ -79,9 +65,18 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     });
   }
 
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //      Initial connection to access websocket for receive event from access API
+  /////////////////////////////////////////////////////////////////////////////////////////
+
   initWebSocket(): void {
+    const wsBaseUrl = this.config.baseUrl.replace(/^https:\/\//, 'wss://');
+    const path = '/api/v1/developer/devices/notifications';
+
+    // Ajouter le chemin spécifique
+    const wsUrl = `${wsBaseUrl}${path}`;
     // Initialize WebSocket connection
-    this.ws = new WebSocket(this.config.wsUrl, {
+    this.ws = new WebSocket(wsUrl, {
       headers: {
         Authorization: `Bearer ${this.config.apiToken}`,
       },
@@ -117,7 +112,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     });
 
     this.ws.on('close', () => {
-      this.log.info('WebSocket connection closed');
+      //this.log.info('WebSocket connection closed');
       // Automatically attempt to reconnect
       this.reconnectWebSocket();
     });
@@ -135,14 +130,24 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     }, 60 * 1000); // Check every minute
   }
 
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //     Reconnect websocket (Called if ping server is not received for 1 minute)
+  /////////////////////////////////////////////////////////////////////////////////////////
+
   reconnectWebSocket(): void {
     // Close existing WebSocket connection if it exists
     if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
       this.ws.close();
     }
 
+    const wsBaseUrl = this.config.baseUrl.replace(/^https:\/\//, 'wss://');
+    const path = '/api/v1/developer/devices/notifications';
+
+    // Ajouter le chemin spécifique
+    const wsUrl = `${wsBaseUrl}${path}`;
+
     // Initialize a new WebSocket connection
-    this.ws = new WebSocket(this.config.wsUrl, {
+    this.ws = new WebSocket(wsUrl, {
       headers: {
         Authorization: `Bearer ${this.config.apiToken}`,
       },
@@ -183,7 +188,9 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     });
   }
 
-
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //      Discover devices
+  /////////////////////////////////////////////////////////////////////////////////////////
 
   async discoverDevices(): Promise<void> {
     try {
@@ -214,7 +221,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
         if (existingAccessory) {
           // Update existing accessory if needed
           this.log.info(`Updating existing accessory from cache: ${existingAccessory.displayName}`);
-          new UnifiAccessory(this, existingAccessory, this.api); // Pass this.api as the third argument
+          new UnifiAccessory(this, existingAccessory, this.api, this.log); // Pass this.api as the third argument
         } else {
           // Create new accessory
           this.log.info(`Adding new accessory: ${device.name}`);
@@ -236,7 +243,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
 
           // Create UnifiAccessory instance for handling updates
-          new UnifiAccessory(this, accessory, this.api); // Pass this.api as the third argument
+          new UnifiAccessory(this, accessory, this.api, this.log); // Pass this.api as the third argument
         }
       });
 
@@ -244,6 +251,10 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
       this.log.error('Failed to discover devices:', error.message);
     }
   }
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //      Fetch door details
+  /////////////////////////////////////////////////////////////////////////////////////////
 
   async fetchDoorDetails(): Promise<any[]> {
     try {
@@ -271,6 +282,10 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     }
   }
 
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //      Unlock door function
+  /////////////////////////////////////////////////////////////////////////////////////////
+
   async unlockDoorById(doorId: string): Promise<void> {
     const urlForUnlock = this.config.baseUrl;
     const unlockUrl = `${urlForUnlock}/api/v1/developer/doors/${doorId}/unlock`;
@@ -294,12 +309,14 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     }
   }
 
-
+  /////////////////////////////////////////////////////////////////////////////////////////
+  //      Configure accessory when called
+  /////////////////////////////////////////////////////////////////////////////////////////
 
   configureAccessory(accessory: PlatformAccessory): void {
     this.log.info(`Loading accessory from cache: ${accessory.displayName}`);
     this.accessories.push(accessory);
-    new UnifiAccessory(this, accessory, this.api);
+    new UnifiAccessory(this, accessory, this.api, this.log);
   }
 
 
@@ -339,7 +356,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
           this.logWarning(eventData.data);
           break;
         default:
-          this.log.warn('Unhandled event:', eventData);
+          this.log.debug('Unhandled event:', eventData);
           break;
       }
     } else {
@@ -349,11 +366,15 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     // Attempt to find the accessory by deviceId if available
     const device = this.findAccessoryByDeviceId(eventData.deviceId);
     if (device) {
-      new UnifiAccessory(this, device, this.api).updateAccessoryCharacteristics();
+      new UnifiAccessory(this, device, this.api, this.log).updateAccessoryCharacteristics();
     } else {
       //this.log.warn(`No accessory found for deviceId: ${eventData.deviceId}`);
     }
   }
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //      Handle device update (Used for get token for door)
+  /////////////////////////////////////////////////////////////////////////////////////////
 
   private handleDeviceUpdateEvent(eventData: any): void {
     try {
@@ -374,7 +395,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
       device.context.doorName = doorName;
 
       // Création de l'accessoire UnifiAccessory pour gérer les caractéristiques
-      const unifiAccessory = new UnifiAccessory(this, device, this.api);
+      const unifiAccessory = new UnifiAccessory(this, device, this.api, this.log);
 
       // Extraction des configurations
       const configs = eventData.data.configs;
@@ -441,14 +462,9 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     }
   }
 
-
-
-
-
-
-
-
-
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //      Find accessory in cached devices by "id"
+  /////////////////////////////////////////////////////////////////////////////////////////
 
   private findAccessoryByDeviceId(deviceId: string | undefined): PlatformAccessory | undefined {
     if (!deviceId) {
@@ -457,11 +473,18 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     return this.accessories.find(acc => acc.UUID === this.api.hap.uuid.generate(deviceId));
   }
 
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //      Handle Ping websocket server
+  /////////////////////////////////////////////////////////////////////////////////////////
 
   handleHelloEvent(): void {
     this.lastHelloTime = Date.now();
     this.log.debug('Ping reçu');
   }
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //      Verify if eventdata is a valid payload
+  /////////////////////////////////////////////////////////////////////////////////////////
 
   private isValidEventData(eventData: any): eventData is EventData {
     if (!eventData) {
@@ -477,39 +500,43 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     return true;
   }
 
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //      Handle remote call from
+  /////////////////////////////////////////////////////////////////////////////////////////
+
   private handleRemoteViewEvent(eventData: EventData): void {
     if (!eventData.data) {
-      this.log.error('No data provided for access.remote_view event');
+      //this.log.error('No data provided for access.remote_view event');
       return;
     }
     // Handle remote_view event data
-    this.log.debug('Handling access.remote_view event:', eventData.data);
+    //this.log.debug('Handling access.remote_view event:', eventData.data);
   }
 
   private handleRemoteViewChangeEvent(eventData: EventData): void {
     if (!eventData.data) {
-      this.log.error('No data provided for access.remote_view.change event');
+      //this.log.error('No data provided for access.remote_view.change event');
       return;
     }
     // Handle remote_view.change event data
-    this.log.debug('Handling access.remote_view.change event:', eventData.data);
+    //this.log.debug('Handling access.remote_view.change event:', eventData.data);
   }
 
   private handleRemoteUnlockEvent(eventData: EventData): void {
     if (!eventData.data) {
-      this.log.error('No data provided for access.data.device.remote_unlock event');
+      //this.log.error('No data provided for access.data.device.remote_unlock event');
       return;
     }
     // Handle remote_unlock event data
-    this.log.debug('Handling access.data.device.remote_unlock event:', eventData.data);
+    //this.log.debug('Handling access.data.device.remote_unlock event:', eventData.data);
   }
 
   private handleDeviceUpdate(eventData: EventData): void {
     if (!eventData.data) {
-      this.log.error('No data provided for access.data.device.update event');
+      //this.log.error('No data provided for access.data.device.update event');
       return;
     }
     // Handle device update event data
-    this.log.debug('Handling access.data.device.update event:', eventData.data);
+    //this.log.debug('Handling access.data.device.update event:', eventData.data);
   }
 }
