@@ -90,6 +90,26 @@ export class UnifiAccessory {
         .onGet(this.handleContactSensorStateGet.bind(this));
 
       return service;
+    } else if (device.type === 'UA-Intercom' ) {
+      const service = this.accessory.getService(this.api.hap.Service.ContactSensor) ||
+        this.accessory.addService(this.api.hap.Service.ContactSensor);
+
+      service.setCharacteristic(this.api.hap.Characteristic.Name, device.name);
+      service.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
+        .onGet(this.handleContactSensorStateGet.bind(this));
+
+      return service;
+
+    } else if (device.type === 'UA-Int-Viewer' ) {
+      const service = this.accessory.getService(this.api.hap.Service.ContactSensor) ||
+        this.accessory.addService(this.api.hap.Service.ContactSensor);
+
+      service.setCharacteristic(this.api.hap.Characteristic.Name, device.name);
+      service.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
+        .onGet(this.handleContactSensorStateGet.bind(this));
+
+      return service;
+
     } else {
       // Log unknown device type as a warning
       this.platform.logWarning(`Unknown device type: ${device.type}`);

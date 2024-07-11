@@ -302,7 +302,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
         throw new Error(`Failed to unlock door. Status: ${response.status}`);
       }
 
-      console.log('Door unlocked successfully');
+      console.log('Door unlocked successfully, if not unlocked in real, reboot now and retry.');
     } catch (error: any) {
       console.error('Error unlocking door:', error.message);
       throw error; // Propagez l'erreur pour une gestion supplémentaire si nécessaire
