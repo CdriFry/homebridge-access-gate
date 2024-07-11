@@ -46,6 +46,7 @@ Pour utiliser ce plugin, vous devez activer l'API sur votre contrôleur Unifi Ac
 1. Connectez-vous à votre contrôleur Unifi Access.
 2. Accédez à la section des paramètres.
 3. Activez l'API et notez l'URL de base qui sera de la forme `http://adresse_ip:12445`.
+4. Déverouillez une fois votre porte depuis l'application / site web Unifi access pour lier Homekit.
 
 
 ## Fonctionnalités
