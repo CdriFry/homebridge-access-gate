@@ -1,141 +1,215 @@
-import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
+import { Service, PlatformAccessory, CharacteristicValue, API } from 'homebridge';
+import UnifiAccessPlatform from './platform';
 
-import { ExampleHomebridgePlatform } from './platform.js';
+interface Device {
+  id: string;
+  name: string;
+  device_type: string;
+  unique_id: string;
+  type: string;
+  isLocked?: boolean;
+  isClosed?: boolean;
+}
 
-/**
- * Platform Accessory
- * An instance of this class is created for each accessory your platform registers
- * Each accessory may expose multiple services of different service types.
- */
-export class ExamplePlatformAccessory {
-  private service: Service;
-
-  /**
-   * These are just used to create a working example
-   * You should implement your own code to track the state of your accessory
-   */
-  private exampleStates = {
-    On: false,
-    Brightness: 100,
+interface DoorChangeEvent {
+  event: 'access.dps_change';
+  receiver_id: string;
+  event_object_id: string;
+  save_to_history: boolean;
+  data: {
+    door_id: string;
+    door_name: string;
+    status: 'open' | 'close'; // Status peut être 'open' ou 'close'
+    type: 'dps_change';
   };
+}
 
-  constructor(
-    private readonly platform: ExampleHomebridgePlatform,
-    private readonly accessory: PlatformAccessory,
-  ) {
+export class UnifiAccessory {
+  private readonly platform: UnifiAccessPlatform;
+  private readonly accessory: PlatformAccessory;
+  private readonly service: Service;
+  private readonly api: API;
 
-    // set accessory information
-    this.accessory.getService(this.platform.Service.AccessoryInformation)!
-      .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Default-Manufacturer')
-      .setCharacteristic(this.platform.Characteristic.Model, 'Default-Model')
-      .setCharacteristic(this.platform.Characteristic.SerialNumber, 'Default-Serial');
+  constructor(platform: UnifiAccessPlatform, accessory: PlatformAccessory, api: API) {
+    this.platform = platform;
+    this.accessory = accessory;
+    this.api = api;
 
-    // get the LightBulb service if it exists, otherwise create a new LightBulb service
-    // you can create multiple services for each accessory
-    this.service = this.accessory.getService(this.platform.Service.Lightbulb) || this.accessory.addService(this.platform.Service.Lightbulb);
 
-    // set the service name, this is what is displayed as the default name on the Home app
-    // in this example we are using the name we stored in the `accessory.context` in the `discoverDevices` method.
-    this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.exampleDisplayName);
+    const device: Device = accessory.context.device;
+    if (device.isLocked === undefined) {
+      device.isLocked = true; // Fermer par défaut
+    }
 
-    // each service must implement at-minimum the "required characteristics" for the given service type
-    // see https://developers.homebridge.io/#/service/Lightbulb
+    this.service = this.determineService(device);
 
-    // register handlers for the On/Off Characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.On)
-      .onSet(this.setOn.bind(this))                // SET - bind to the `setOn` method below
-      .onGet(this.getOn.bind(this));               // GET - bind to the `getOn` method below
-
-    // register handlers for the Brightness Characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.Brightness)
-      .onSet(this.setBrightness.bind(this));       // SET - bind to the 'setBrightness` method below
-
-    /**
-     * Creating multiple services of the same type.
-     *
-     * To avoid "Cannot add a Service with the same UUID another Service without also defining a unique 'subtype' property." error,
-     * when creating multiple services of the same type, you need to use the following syntax to specify a name and subtype id:
-     * this.accessory.getService('NAME') || this.accessory.addService(this.platform.Service.Lightbulb, 'NAME', 'USER_DEFINED_SUBTYPE_ID');
-     *
-     * The USER_DEFINED_SUBTYPE must be unique to the platform accessory (if you platform exposes multiple accessories, each accessory
-     * can use the same subtype id.)
-     */
-
-    // Example: add two "motion sensor" services to the accessory
-    const motionSensorOneService = this.accessory.getService('Motion Sensor One Name') ||
-      this.accessory.addService(this.platform.Service.MotionSensor, 'Motion Sensor One Name', 'YourUniqueIdentifier-1');
-
-    const motionSensorTwoService = this.accessory.getService('Motion Sensor Two Name') ||
-      this.accessory.addService(this.platform.Service.MotionSensor, 'Motion Sensor Two Name', 'YourUniqueIdentifier-2');
-
-    /**
-     * Updating characteristics values asynchronously.
-     *
-     * Example showing how to update the state of a Characteristic asynchronously instead
-     * of using the `on('get')` handlers.
-     * Here we change update the motion sensor trigger states on and off every 10 seconds
-     * the `updateCharacteristic` method.
-     *
-     */
-    let motionDetected = false;
-    setInterval(() => {
-      // EXAMPLE - inverse the trigger
-      motionDetected = !motionDetected;
-
-      // push the new value to HomeKit
-      motionSensorOneService.updateCharacteristic(this.platform.Characteristic.MotionDetected, motionDetected);
-      motionSensorTwoService.updateCharacteristic(this.platform.Characteristic.MotionDetected, !motionDetected);
-
-      this.platform.log.debug('Triggering motionSensorOneService:', motionDetected);
-      this.platform.log.debug('Triggering motionSensorTwoService:', !motionDetected);
-    }, 10000);
+    // Set accessory information
+    this.accessory.getService(this.api.hap.Service.AccessoryInformation)!
+      .setCharacteristic(this.api.hap.Characteristic.Manufacturer, 'Soundimage')
+      .setCharacteristic(this.api.hap.Characteristic.Model, 'Access HUB')
+      .setCharacteristic(this.api.hap.Characteristic.SerialNumber, '06072024');
   }
 
-  /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, turning on a Light bulb.
-   */
-  async setOn(value: CharacteristicValue) {
-    // implement your own code to turn your device on/off
-    this.exampleStates.On = value as boolean;
+  private determineService(device: Device): Service {
+    if (device.type === 'UAH-DOOR' || device.type === 'UAH' || device.type === 'door') {
+      const service = this.accessory.getService(this.api.hap.Service.LockMechanism) ||
+        this.accessory.addService(this.api.hap.Service.LockMechanism);
 
-    this.platform.log.debug('Set Characteristic On ->', value);
+      service.setCharacteristic(this.api.hap.Characteristic.Name, device.name);
+
+
+      service.getCharacteristic(this.api.hap.Characteristic.LockCurrentState)
+        .onGet(this.handleLockCurrentStateGet.bind(this));
+
+      service.getCharacteristic(this.api.hap.Characteristic.LockTargetState)
+        .onGet(this.handleLockTargetStateGet.bind(this))
+        .onSet(this.handleLockTargetStateSet.bind(this));
+
+      // Set default values for LockCurrentState and LockTargetState
+      service.updateCharacteristic(
+        this.api.hap.Characteristic.LockCurrentState,
+        this.api.hap.Characteristic.LockCurrentState.SECURED,
+      );
+      service.updateCharacteristic(
+        this.api.hap.Characteristic.LockTargetState,
+        this.api.hap.Characteristic.LockTargetState.SECURED,
+      );
+
+      this.updateAccessoryCharacteristics();
+
+      return service;
+    } else if (device.type === 'UA-G2-MINI' || device.type === 'UA-LITE') {
+      const service = this.accessory.getService(this.api.hap.Service.ContactSensor) ||
+        this.accessory.addService(this.api.hap.Service.ContactSensor);
+
+      service.setCharacteristic(this.api.hap.Characteristic.Name, device.name);
+      service.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
+        .onGet(this.handleContactSensorStateGet.bind(this));
+
+      return service;
+    } else {
+      // Log unknown device type as a warning
+      this.platform.logWarning(`Unknown device type: ${device.type}`);
+
+      // You might want to handle this differently based on your application logic
+      throw new Error(`Unsupported device type: ${device.type}`);
+    }
   }
 
-  /**
-   * Handle the "GET" requests from HomeKit
-   * These are sent when HomeKit wants to know the current state of the accessory, for example, checking if a Light bulb is on.
-   *
-   * GET requests should return as fast as possible. A long delay here will result in
-   * HomeKit being unresponsive and a bad user experience in general.
-   *
-   * If your device takes time to respond you should update the status of your device
-   * asynchronously instead using the `updateCharacteristic` method instead.
 
-   * @example
-   * this.service.updateCharacteristic(this.platform.Characteristic.On, true)
-   */
-  async getOn(): Promise<CharacteristicValue> {
-    // implement your own code to check if the device is on
-    const isOn = this.exampleStates.On;
+  // Méthodes pour gérer les états et événements spécifiques à l'accessoire
 
-    this.platform.log.debug('Get Characteristic On ->', isOn);
+  handleDoorChangeEvent(event: DoorChangeEvent): void {
+    const device = this.accessory.context.device;
 
-    // if you need to return an error to show the device as "Not Responding" in the Home app:
-    // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    // Mettre à jour l'état du contact selon l'événement reçu
+    const contactState = event.data.status === 'close'
+      ? this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED
+      : this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED;
 
-    return isOn;
+    // Mettre à jour le service ContactSensor avec le nouvel état
+    this.service.updateCharacteristic(this.api.hap.Characteristic.ContactSensorState, contactState);
+
+    // Log pour le suivi dans les logs
+    this.platform.logWarning(`Door '${event.data.door_name}' state changed to '${event.data.status}'`);
   }
 
-  /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, changing the Brightness
-   */
-  async setBrightness(value: CharacteristicValue) {
-    // implement your own code to set the brightness
-    this.exampleStates.Brightness = value as number;
 
-    this.platform.log.debug('Set Characteristic Brightness -> ', value);
+  handleLockCurrentStateGet(): CharacteristicValue {
+    const device = this.accessory.context;
+    console.log('Accessory context:', this.accessory.context);
+    console.log(device.lockState);
+    const lockState = device.lockState === 'locked'
+      ? this.api.hap.Characteristic.LockCurrentState.SECURED
+      : this.api.hap.Characteristic.LockCurrentState.UNSECURED;
+
+    this.platform.logWarning(`Lock current state get: ${lockState}`);
+    return lockState;
   }
+
+  handleLockTargetStateGet(): CharacteristicValue {
+    const device = this.accessory.context;
+    const targetLockState = device.lockState === 'locked'
+      ? this.api.hap.Characteristic.LockTargetState.SECURED
+      : this.api.hap.Characteristic.LockTargetState.UNSECURED;
+
+    this.platform.logWarning(`Lock target state get: ${targetLockState}`);
+    return targetLockState;
+  }
+
+  async handleLockTargetStateSet(value: CharacteristicValue, callback: (error?: Error) => void): Promise<void> {
+    try {
+      const device = this.accessory.context.device;
+      const isSecured = value === this.api.hap.Characteristic.LockTargetState.SECURED;
+
+      this.platform.logWarning(`Lock target state set: ${isSecured ? 'SECURED' : 'UNSECURED'}`);
+
+      // Update the lock state in the device context
+      device.isLocked = isSecured;
+
+      // Update the current lock state to reflect the change
+      const lockService = this.accessory.getService(this.api.hap.Service.LockMechanism);
+      if (lockService) {
+        lockService.updateCharacteristic(
+          this.api.hap.Characteristic.LockCurrentState,
+          isSecured ? this.api.hap.Characteristic.LockCurrentState.SECURED : this.api.hap.Characteristic.LockCurrentState.UNSECURED,
+        );
+      }
+
+      // If unlocking is requested, call unlockDoorById with the device's door_id
+      if (!isSecured) {
+        const doorId = this.accessory.context.doorId; // Replace with actual device ID
+        await this.platform.unlockDoorById(doorId); // Utilisez la fonction unlockDoorById de UnifiAccessPlatform
+      }
+
+    } catch (error:any) {
+      // Call the callback with an error in case of exception
+      callback(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+
+
+
+
+  handleContactSensorStateGet(): CharacteristicValue {
+    const device = this.accessory.context.device;
+    return device.isClosed ? this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED
+      : this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED;
+  }
+
+  updateAccessoryCharacteristics(): void {
+    const deviceContext = this.accessory.context;
+
+    if (!deviceContext || !deviceContext.device) {
+      this.platform.logWarning('Device context is missing');
+      return;
+    }
+
+    const device = deviceContext.device;
+
+    // Mettre à jour l'état de verrouillage actuel à partir du contexte
+    if (this.service instanceof this.api.hap.Service.LockMechanism) {
+      const lockState = deviceContext.lockState === 'locked'
+        ? this.api.hap.Characteristic.LockCurrentState.SECURED
+        : this.api.hap.Characteristic.LockCurrentState.UNSECURED;
+
+      this.service.updateCharacteristic(this.api.hap.Characteristic.LockCurrentState, lockState);
+      this.service.updateCharacteristic(this.api.hap.Characteristic.LockTargetState, lockState);
+    }
+
+    // Mettre à jour l'état du capteur de contact à partir du contexte
+    if (this.service instanceof this.api.hap.Service.ContactSensor) {
+      const contactState = !deviceContext.isSensorOpen
+        ? this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED
+        : this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED;
+
+      this.service.updateCharacteristic(this.api.hap.Characteristic.ContactSensorState, contactState);
+    }
+
+    // Mettre à jour l'accessoire dans Homebridge
+    this.api.updatePlatformAccessories([this.accessory]);
+  }
+
 
 }
