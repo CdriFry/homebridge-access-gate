@@ -2,7 +2,7 @@
   "private": false,
   "name": "homebridge-unifi-access-gate",
   "displayName": "Homebridge Unifi Access Gate (G2)",
-  "version": "1.0.1-beta1.2",
+  "version": "1.0.1",
   "author": {
     "name": "CdriFry",
     "url": "https://github.com/cdrifry"
