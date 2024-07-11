@@ -1,12 +1,14 @@
+<h1 style="text-align: center;">Homebridge Unifi Access Gate Plugin</h1>
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/homebridge/branding/master/logos/homebridge-color-round-stylized.png" alt="Homebridge" width="200"/>
-  <img src="https://techspecs.ui.com/static/brand/UniFi/access.svg" alt="Unifi access branding" width="200"/>
-</p>
+<div style="text-align: center;">
+    <div style="display: inline-block; margin-right: 10px;">
+        <img src="https://raw.githubusercontent.com/homebridge/branding/master/logos/homebridge-color-round-stylized.png" alt="Homebridge logo" style="width: 200px;">
+    </div>
+    <div style="display: inline-block; margin-right: 10px;">
+        <img src="https://techspecs.ui.com/static/brand/UniFi/access.svg" alt="Unifi Access Branding" style="width: 200px;">
+    </div>
+</div>
 
----
-
-<h1 align="center">Homebridge Unifi Access Gate Plugin</h1>
 
 ## Introduction
 
@@ -46,7 +48,6 @@ Pour utiliser ce plugin, vous devez activer l'API sur votre contrôleur Unifi Ac
 1. Connectez-vous à votre contrôleur Unifi Access.
 2. Accédez à la section des paramètres.
 3. Activez l'API et notez l'URL de base qui sera de la forme `http://adresse_ip:12445`.
-4. Déverouillez une fois votre porte depuis l'application / site web Unifi access pour lier Homekit.
 
 
 ## Fonctionnalités

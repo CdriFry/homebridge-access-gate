@@ -39,9 +39,9 @@ export class UnifiAccessory {
 
 
     const device: Device = accessory.context.device;
-    //if (device.isLocked === undefined) {
-    // device.isLocked = true; // Fermer par défaut
-    //}
+    if (device.isLocked === undefined) {
+      device.isLocked = true; // Fermer par défaut
+    }
 
 
     this.service = this.determineService(device);
@@ -119,12 +119,12 @@ export class UnifiAccessory {
 
   handleLockCurrentStateGet(): CharacteristicValue {
     const device = this.accessory.context;
-    this.log.debug('Accessory context:', this.accessory.context);
+    //this.log.debug('Accessory context:', this.accessory.context);
     const lockState = device.lockState === 'locked'
       ? this.api.hap.Characteristic.LockCurrentState.SECURED
       : this.api.hap.Characteristic.LockCurrentState.UNSECURED;
 
-    this.log.debug(`Lock current state get: ${lockState}`);
+    //this.log.debug(`Lock current state get: ${lockState}`);
     return lockState;
   }
 
@@ -134,19 +134,19 @@ export class UnifiAccessory {
       ? this.api.hap.Characteristic.LockTargetState.SECURED
       : this.api.hap.Characteristic.LockTargetState.UNSECURED;
 
-    this.log.debug(`Lock target state get: ${targetLockState}`);
+    //this.log.debug(`Lock target state get: ${targetLockState}`);
     return targetLockState;
   }
 
   async handleLockTargetStateSet(value: CharacteristicValue, callback: (error?: Error) => void): Promise<void> {
     try {
-      //const device = this.accessory.context.device;
+      const device = this.accessory.context.device;
       const isSecured = value === this.api.hap.Characteristic.LockTargetState.SECURED;
 
       this.platform.logWarning(`Lock target state set: ${isSecured ? 'SECURED' : 'UNSECURED'}`);
 
       // Update the lock state in the device context
-      //device.isLocked = isSecured;
+      device.isLocked = isSecured;
 
       // Update the current lock state to reflect the change
       const lockService = this.accessory.getService(this.api.hap.Service.LockMechanism);

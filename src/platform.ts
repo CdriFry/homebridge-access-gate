@@ -344,7 +344,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
           }
           break;
         case 'access.data.device.remote_unlock':
-          this.log.warn(eventData.data);
+          //this.log.warn(eventData.data);
           if (eventData.data) {
             this.handleRemoteUnlockEvent(eventData.data);
           }
@@ -353,14 +353,14 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
           this.handleDeviceUpdateEvent(eventData);
           break;
         case 'access.logs.add':
-          this.logWarning(eventData.data);
+          //this.logWarning(eventData.data);
           break;
         default:
-          this.log.debug('Unhandled event:', eventData);
+          //this.log.debug('Unhandled event:', eventData);
           break;
       }
     } else {
-      this.log.warn('Unhandled event:', eventData);
+      //this.log.warn('Unhandled event:', eventData);
     }
 
     // Attempt to find the accessory by deviceId if available
@@ -382,7 +382,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
       const device = this.accessories.find(acc => acc.context.id === uniqueId);
 
       if (!device) {
-        this.log.warn(`No accessory found for unique_id: ${uniqueId}`);
+        this.log.warn(`No accessory found for unique_id: ${uniqueId}. If this is the first configurations, please reboot.`);
         return;
       }
 
