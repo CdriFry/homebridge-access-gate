@@ -47,12 +47,21 @@ Pour utiliser ce plugin, vous devez activer l'API sur votre contrôleur Unifi Ac
 3. Activez l'API et notez l'URL de base qui sera de la forme `http://adresse_ip:12445`.
 
 
-## Fonctionnalités
+## Features 
 
+- Déverouiller les dispositifs Unifi Access via l'application HomeKit.
+- Auto-découverte des dispositifs Unifi Access (Déjà pris en charge - UA Hub - UA Hub Door (G2) - UA G2 Mini - UA LITE  /  À venir - Intercom - Intercom Viewer)
+- Détecteur de contact pour les lecteurs NFC, Intercom
 - Surveillance en temps réel de vos dispositifs Unifi Access.
 - Notifications d'événements et d'alarmes.
-- Contrôle des dispositifs Unifi Access via l'application HomeKit.
 
+## Fonctionnalités à venir
+
+ - Doorbell depuis Intercom
+ - Doorbell depuis Hub
+ - Détecteur de contact pour les utilisateurs (Qui déverouille ?)
+ - 
+  
 ## Support et Documentation
 
 Pour plus d'informations et de support, ouvrez un [Support request](https://github.com/CdriFry/homebridge-access-gate/issues/new/choose).
