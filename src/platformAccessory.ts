@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import { Service, PlatformAccessory, Logger, CharacteristicValue, API } from 'homebridge';
 import UnifiAccessPlatform from './platform';
 
@@ -9,6 +10,10 @@ interface Device {
   type: string;
   isLocked?: boolean;
   isClosed?: boolean;
+  ContactRen: boolean;
+  ContactRex: boolean;
+  ContactRel: boolean;
+
 }
 
 interface DoorChangeEvent {
@@ -30,12 +35,14 @@ export class UnifiAccessory {
   private readonly service: Service;
   private readonly api: API;
   private readonly log: Logger;
+  private accessories: PlatformAccessory[];
 
   constructor(platform: UnifiAccessPlatform, accessory: PlatformAccessory, api: API, log: Logger) {
     this.platform = platform;
     this.accessory = accessory;
     this.api = api;
     this.log = log;
+    this.accessories = [];
 
 
     const device: Device = accessory.context.device;
@@ -43,6 +50,21 @@ export class UnifiAccessory {
       device.isLocked = true; // Fermer par défaut
     }
 
+    if (accessory.context.isClosed === undefined) {
+      accessory.context.isClosed = true;
+    }
+
+    if (accessory.context.ContactRen === undefined) {
+      accessory.context.ContactRen = true;
+    }
+
+    if (accessory.context.ContactRex === undefined) {
+      accessory.context.ContactRex = true;
+    }
+
+    if (accessory.context.ContactRel === undefined) {
+      accessory.context.ContactRel = true;
+    }
 
     this.service = this.determineService(device);
 
@@ -51,6 +73,7 @@ export class UnifiAccessory {
       .setCharacteristic(this.api.hap.Characteristic.Manufacturer, 'Soundimage')
       .setCharacteristic(this.api.hap.Characteristic.Model, 'Access HUB')
       .setCharacteristic(this.api.hap.Characteristic.SerialNumber, '110720241011');
+
   }
 
   private determineService(device: Device): Service {
@@ -78,10 +101,12 @@ export class UnifiAccessory {
         this.api.hap.Characteristic.LockTargetState.SECURED,
       );
 
+
+
       this.updateAccessoryCharacteristics();
 
       return service;
-    } else if (device.type === 'UA-G2-MINI' || device.type === 'UA-LITE') {
+    } else if (device.type === 'UA-G2-MINI' || device.type === 'UA-LITE' || device.type === 'UA-Intercom' || device.type === 'UA-Int-Viewer') {
       const service = this.accessory.getService(this.api.hap.Service.ContactSensor) ||
         this.accessory.addService(this.api.hap.Service.ContactSensor);
 
@@ -89,27 +114,15 @@ export class UnifiAccessory {
       service.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
         .onGet(this.handleContactSensorStateGet.bind(this));
 
-      return service;
-    } else if (device.type === 'UA-Intercom' ) {
-      const service = this.accessory.getService(this.api.hap.Service.ContactSensor) ||
-        this.accessory.addService(this.api.hap.Service.ContactSensor);
+      // Définir la valeur par défaut de ContactSensorState sur CONTACT_NOT_DETECTED (fermé)
+      service.updateCharacteristic(
+        this.api.hap.Characteristic.ContactSensorState,
+        this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED,
+      );
 
-      service.setCharacteristic(this.api.hap.Characteristic.Name, device.name);
-      service.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
-        .onGet(this.handleContactSensorStateGet.bind(this));
-
-      return service;
-
-    } else if (device.type === 'UA-Int-Viewer' ) {
-      const service = this.accessory.getService(this.api.hap.Service.ContactSensor) ||
-        this.accessory.addService(this.api.hap.Service.ContactSensor);
-
-      service.setCharacteristic(this.api.hap.Characteristic.Name, device.name);
-      service.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
-        .onGet(this.handleContactSensorStateGet.bind(this));
+      this.updateAccessoryCharacteristics();
 
       return service;
-
     } else {
       // Log unknown device type as a warning
       this.platform.logWarning(`Unknown device type: ${device.type}`);
@@ -119,8 +132,9 @@ export class UnifiAccessory {
     }
   }
 
-
-  // Méthodes pour gérer les états et événements spécifiques à l'accessoire
+  //////////////////////////////////////////////////////////////////////////////////////////
+  //     Handle change state of the UA Hub
+  /////////////////////////////////////////////////////////////////////////////////////////
 
   handleDoorChangeEvent(event: DoorChangeEvent): void {
 
@@ -191,10 +205,12 @@ export class UnifiAccessory {
 
 
 
-
-
   handleContactSensorStateGet(): CharacteristicValue {
-    const device = this.accessory.context.device;
+    const device = this.accessory.context;
+    //this.log.info('Device context:', JSON.stringify(device, null, 2));
+    //this.log.info('Handle Get Sensor State');
+
+    this.api.updatePlatformAccessories([this.accessory]);
     return device.isClosed ? this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED
       : this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED;
   }
@@ -219,15 +235,26 @@ export class UnifiAccessory {
 
     // Mettre à jour l'état du capteur de contact à partir du contexte
     if (this.service instanceof this.api.hap.Service.ContactSensor) {
-      const contactState = !deviceContext.isSensorOpen
-        ? this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED
-        : this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED;
+      const variablesToTrack = ['isClosed', 'ContactRen', 'ContactRex', 'ContactRel'];
 
-      this.service.updateCharacteristic(this.api.hap.Characteristic.ContactSensorState, contactState);
+      variablesToTrack.forEach(variable => {
+        const serviceName = `${deviceContext.device.name} - ${variable}`;
+        const contactSensorService = this.accessory.getService(serviceName);
+
+        if (contactSensorService) {
+          const contactState = !deviceContext[variable]
+            ? this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED
+            : this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED;
+
+          contactSensorService.updateCharacteristic(this.api.hap.Characteristic.ContactSensorState, contactState);
+        } else {
+          this.platform.logWarning(`Contact Sensor service not found for variable: ${variable}`);
+        }
+      });
+
+      // Mettre à jour l'accessoire dans Homebridge
+
     }
-
-    // Mettre à jour l'accessoire dans Homebridge
-    this.api.updatePlatformAccessories([this.accessory]);
   }
 
 

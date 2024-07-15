@@ -6,6 +6,7 @@
 ---
 
 <h1 align="center">Homebridge Unifi Access Gate Plugin</h1>
+<h3 align="center">Developpement stage</h3>
 
 ## Introduction
 
@@ -60,7 +61,15 @@ Pour utiliser ce plugin, vous devez activer l'API sur votre contrôleur Unifi Ac
  - Doorbell depuis Intercom
  - Doorbell depuis Hub
  - Détecteur de contact pour les utilisateurs (Qui déverouille ?)
- - 
+
+## Contacts & Serrures
+
+Le plugin crée une entitée "lock" et des capteurs de contacts lié à celui-ci : 
+  - Lock : Hub Access
+      - Capteur 1 : "Door Position Sensor"
+      - Capteur 2 : "Request entry"
+      - Capteur 3 : "Request Exit"
+      - Capteur 4 : "Remote Unlock requested"
   
 ## Support et Documentation
 

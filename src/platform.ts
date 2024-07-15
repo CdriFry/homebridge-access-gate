@@ -1,12 +1,11 @@
-import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
+/* eslint-disable max-len */
+import { API, DynamicPlatformPlugin, CharacteristicValue, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
 import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 import WebSocket from 'ws';
-
-
-
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { UnifiAccessory } from './platformAccessory';
+
 
 interface Device {
   id: string;
@@ -33,6 +32,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
   private axiosInstance!: AxiosInstance;
   private ws!: WebSocket;
   private lastHelloTime: number = Date.now();
+  private pendingTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
   private apiToken: string;
 
@@ -228,15 +228,35 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
           const accessory = new this.api.platformAccessory(device.name, uuid);
           accessory.context.device = device;
           accessory.context.id = device.id;
-          accessory.context.lockState = 'locked';
 
           // Check device type and add Contact Sensor service if it's a UAH-DOOR
           if (device.type === 'UAH-DOOR' || device.type === 'UAH') {
             this.log.info(`Adding Contact Sensor service for: ${device.name}`);
-            accessory.addService(this.api.hap.Service.ContactSensor, device.name);
+            // Définir les variables à suivre pour chaque hub
+            const variablesToTrack = ['isClosed', 'ContactRen', 'ContactRex', 'ContactRel']; // Remplacez par vos variables spécifiques
+
+            variablesToTrack.forEach(variable => {
+              const contactSensorName = `${device.name} - ${variable}`;
+              this.log.info(`Adding Contact Sensor service for: ${contactSensorName}`);
+
+              const contactSensorService = accessory.addService(this.api.hap.Service.ContactSensor, contactSensorName, variable);
+
+              contactSensorService.setCharacteristic(this.api.hap.Characteristic.Name, contactSensorName);
+
+              // Initialize sensor state for each variable (assuming it's closed initially)
+              accessory.context[`${variable}State`] = false; // Initialisez l'état selon vos besoins
+              contactSensorService.updateCharacteristic(this.api.hap.Characteristic.ContactSensorState, this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED);
+            });
+
+            accessory.context.lockState = 'locked';
 
             // Initialize sensor state (assuming it's closed initially)
-            accessory.context.isSensorOpen = false;
+            accessory.context.isClosed = false;
+          } else if (device.type === 'UA-G2-MINI' || device.type === 'UA-LITE' || device.type === 'UA-Intercom' || device.type === 'UA-Intercom-viewer') {
+            this.log.info(`Adding ContactSensor service for: ${device.name}`);
+            accessory.addService(this.api.hap.Service.ContactSensor, device.name);
+            // Initialize sensor state (assuming it's closed initially)
+            accessory.context.isClosed = true;
           }
 
           // Register the accessory
@@ -276,6 +296,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
 
       // Vous pouvez maintenant utiliser ces détails de porte comme nécessaire dans votre logique
       return doors;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error:any) {
       this.log.error('Failed to fetch door details:', error.message);
       throw error; // Propagez l'erreur pour une gestion supplémentaire si nécessaire
@@ -283,7 +304,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////
-  //      Unlock door function
+  //      Unlock door function (Called when a remote unlock is requested by the user)
   /////////////////////////////////////////////////////////////////////////////////////////
 
   async unlockDoorById(doorId: string): Promise<void> {
@@ -319,12 +340,10 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     new UnifiAccessory(this, accessory, this.api, this.log);
   }
 
-
   handleEvent(eventData: any): void {
     if (!this.isValidEventData(eventData)) {
       return;
     }
-
 
     // Log the received event
     //const eventString = JSON.stringify(eventData, null, 2);
@@ -354,6 +373,10 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
           break;
         case 'access.logs.add':
           //this.logWarning(eventData.data);
+          this.handleMessage(eventData);
+          break;
+        case 'access.hw.door_bell':
+          //this.logWarning(eventData.data);
           break;
         default:
           //this.log.debug('Unhandled event:', eventData);
@@ -373,10 +396,115 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////
+  //      Handle specific devices states (Reader, Intercom, ect)
+  /////////////////////////////////////////////////////////////////////////////////////////
+
+  private checkEvent(message: any): boolean {
+    // Assurez-vous que le message contient bien les données attendues
+    if (!message || !message._source || !message._source.event) {
+      this.log.warn('Invalid message format or missing event data.');
+      return false;
+    }
+
+    const eventType = message._source.event.type;
+    //this.log.debug(`Event type from message: ${eventType}`);
+
+    // Vérifiez si le type d'événement correspond à l'ouverture de la porte
+    return true;
+  }
+
+  private handleMessage(eventData: EventData): void {
+    try {
+      // Vérifiez que les données de l'événement sont définies et contiennent les cibles
+      if (!eventData.data || !eventData.data._source || !eventData.data._source.target) {
+        this.log.warn('Event data or target is missing.');
+        return;
+      }
+
+      // Cherchez l'objet avec le type "UA-G2-MINI" dans le tableau target
+      const targetItem = eventData.data._source.target.find((item: { type: string }) => item.type === 'UA-G2-MINI' || item.type === 'UA-LITE');
+
+      // Vérifiez que targetItem est défini
+      if (!targetItem) {
+        //this.log.warn('No target item with type "UA-G2-MINI" found.');
+        return;
+      }
+
+      // Récupérez l'ID correspondant
+      const uniqueId = targetItem.id;
+
+      // Trouvez l'accessoire avec le ID unique
+      const device = this.accessories.find(acc => acc.context.device.id === uniqueId);
+
+      if (!device) {
+        this.log.warn(`No accessory found for unique_id: ${uniqueId}. If this is the first configuration, please reboot now for register the devices.`);
+        return;
+      }
+
+      // Récupérez l'ID du capteur à partir du contexte de l'accessoire
+      const sensorId = device.context.device.id;
+
+      //this.log.debug('Received message:', JSON.stringify(eventData.data, null, 2));
+      //this.log.debug('Sensor ID to compare:', sensorId);
+      //this.log.info('Device context:', JSON.stringify(device.context, null, 2));
+
+      // Vérifiez si le capteur est ouvert ou fermé en fonction des données de l'événement
+      const isOpened = this.checkEvent(eventData.data); // Utilisez cette méthode pour déterminer si le capteur est ouvert
+
+      // Log pour l'état actuel du capteur
+      //this.log.debug(`Current state: ${isOpened ? 'Open' : 'Closed'}`);
+
+      // Mettre à jour l'état du capteur uniquement si nécessaire
+      const contactSensorService = device.getService(this.api.hap.Service.ContactSensor);
+      if (contactSensorService) {
+        const currentState = contactSensorService.getCharacteristic(this.api.hap.Characteristic.ContactSensorState).value;
+
+        // Si le capteur est ouvert et était précédemment fermé, ou vice versa, mettre à jour l'état
+        if (isOpened && currentState !== this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED) {
+          // Mise à jour pour "ouvert"
+          contactSensorService.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
+            .updateValue(this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED);
+          this.log.debug(`Sensor state changed for ${device.displayName}: Open`);
+          device.context.isClosed = false;
+        } else if (!isOpened && currentState !== this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED) {
+          // Mise à jour pour "fermé"
+          contactSensorService.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
+            .updateValue(this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED);
+          this.log.debug(`Sensor state changed for ${device.displayName}: Closed`);
+          device.context.isClosed = true;
+        }
+
+        // Si un timeout est déjà en cours pour cet appareil, annulez-le
+        if (this.pendingTimeouts.has(sensorId)) {
+          clearTimeout(this.pendingTimeouts.get(sensorId)!);
+        }
+
+        // Lancez un délai de 5 secondes avant de fermer le contact si le capteur est ouvert
+        if (isOpened) {
+          const timeoutId = setTimeout(() => {
+            contactSensorService.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
+              .updateValue(this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED);
+            this.log.debug(`Sensor state changed for ${device.displayName}: Closed`);
+            device.context.isClosed = true;
+            this.pendingTimeouts.delete(sensorId); // Nettoyez la Map après l'expiration du délai
+          }, 5000); // 5000 millisecondes = 5 secondes
+
+          // Stockez le timeout en cours
+          this.pendingTimeouts.set(sensorId, timeoutId);
+        }
+      } else {
+        this.log.warn('ContactSensor service not found.');
+      }
+    } catch (error) {
+      this.log.error('Failed to handle message from devices:', error);
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////
   //      Handle device update (Used for get token for door)
   /////////////////////////////////////////////////////////////////////////////////////////
 
-  private handleDeviceUpdateEvent(eventData: any): void {
+  private handleDeviceUpdateEvent(eventData: EventData): void {
     try {
       const uniqueId = eventData.data.unique_id;
       const device = this.accessories.find(acc => acc.context.id === uniqueId);
@@ -387,8 +515,8 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
       }
 
       // Extraction des valeurs de unique_id et door
-      const doorId = eventData.data.door.unique_id;
-      const doorName = eventData.data.door.name;
+      const doorId = eventData.data.door?.unique_id;
+      const doorName = eventData.data.door?.name;
 
       // Stocker ces valeurs dans le contexte de l'accessoire
       device.context.doorId = doorId;
@@ -400,62 +528,60 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
       // Extraction des configurations
       const configs = eventData.data.configs;
 
-      // Recherche de la configuration 'input_state_dps'
-      const inputStateConfig = configs.find((config: any) => config.key === 'input_state_dps');
+      // Fonction pour traiter les configurations
+      const handleConfig = (key: string, contextKey: string, stateMapping: { [key: string]: CharacteristicValue }) => {
+        const config = configs.find((config: any) => config.key === key);
+        if (config) {
+          const state = stateMapping[config.value];
+          if (state === undefined) {
+            this.log.warn(`Unhandled state value '${config.value}' for ${key}. Defaulting to 'CONTACT_NOT_DETECTED'.`);
+          }
+          const previousState = device.context[contextKey];
+          const finalState = state ?? this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED; // Valeur par défaut
 
-      if (!inputStateConfig) {
-        this.log.warn(`Config 'input_state_dps' not found for ${device.displayName}`);
-        return;
-      }
+          if (previousState !== finalState) {
+            device.context[contextKey] = finalState;
+            this.log.info(`${contextKey} state changed for ${device.displayName}: ${finalState}`);
 
-
-      // Détermination de l'état du capteur (ouvert ou fermé)
-      const isSensorOpen = inputStateConfig.value === 'off'; // Adapter selon votre logique spécifique
-
-      // Comparaison avec l'état précédent
-      const previousState = device.context.isSensorOpen;
-
-      if (previousState !== isSensorOpen) {
-        // Mettre à jour l'état dans le contexte de l'accessoire
-        device.context.isSensorOpen = isSensorOpen;
-
-        // Affichage du message dans les logs sur le changement d'état
-        this.log.info(`Sensor state changed for ${device.displayName}: ${isSensorOpen ? 'Open' : 'Closed'}`);
-
-        // Mettre à jour les caractéristiques de l'accessoire via UnifiAccessory
-        unifiAccessory.updateAccessoryCharacteristics();
-
-        // Mettre à jour l'état du service ContactSensor de l'accessoire
-        const contactSensorService = device.getService(this.api.hap.Service.ContactSensor);
-        if (contactSensorService) {
-          contactSensorService.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
-            .updateValue(isSensorOpen ? this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED : this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED);
+            // Mise à jour du service ContactSensor
+            const contactSensorService = device.getServiceById(this.api.hap.Service.ContactSensor, contextKey);
+            if (contactSensorService) {
+              contactSensorService.getCharacteristic(this.api.hap.Characteristic.ContactSensorState)
+                .updateValue(finalState);
+            }
+            unifiAccessory.updateAccessoryCharacteristics();
+          }
         }
-      }
+      };
 
-      // Recherche de la configuration 'input_state_rly-lock_dry'
-      const rlyLockDryConfig = configs.find((config: any) => config.key === 'input_state_rly-lock_dry');
+      // Gestion de l'état du capteur principal
+      handleConfig('input_state_dps', 'isClosed', {
+        'off': this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED,
+        'on': this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED,
+        'default': this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED,
+      });
 
-      if (rlyLockDryConfig) {
-        // Détermination de l'état actuel de la serrure
-        const isLockUnlocked = rlyLockDryConfig.value === 'on';
+      // Gestion de l'état de la serrure
+      handleConfig('input_state_rly-lock_dry', 'lockState', {
+        'on': 'unlocked',
+        'off': 'locked',
+        'default': device.context.lockState,
+      });
 
-        // Comparaison avec l'état précédent
-        const previousLockState = device.context.lockState;
+      // Gestion des variables supplémentaires
+      const variableConfigs = [
+        { key: 'input_state_rex', contextKey: 'ContactRex' },
+        { key: 'input_state_ren', contextKey: 'ContactRen' },
+        { key: 'input_state_rel', contextKey: 'ContactRel' },
+      ];
 
-        // Seulement déverrouiller si l'état précédent n'était pas déverrouillé
-        if (isLockUnlocked && previousLockState !== 'unlocked') {
-          this.log.info('Lock is unlocked from Access API');
-          device.context.lockState = 'unlocked';
-          unifiAccessory.updateAccessoryCharacteristics();
-
-        // Seulement verrouiller si l'état précédent n'était pas verrouillé
-        } else if (!isLockUnlocked && previousLockState !== 'locked') {
-          this.log.info('Lock is locked from Access API');
-          device.context.lockState = 'locked';
-          unifiAccessory.updateAccessoryCharacteristics();
-        }
-      }
+      variableConfigs.forEach(({ key, contextKey }) => {
+        handleConfig(key, contextKey, {
+          'on': this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED,
+          'off': this.api.hap.Characteristic.ContactSensorState.CONTACT_DETECTED,
+          'default': this.api.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED,
+        });
+      });
 
     } catch (error) {
       this.log.error('Failed to handle device update event:', error);
@@ -501,7 +627,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////
-  //      Handle remote call from
+  //      Handle remote call from access API
   /////////////////////////////////////////////////////////////////////////////////////////
 
   private handleRemoteViewEvent(eventData: EventData): void {
@@ -530,6 +656,10 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     // Handle remote_unlock event data
     //this.log.debug('Handling access.data.device.remote_unlock event:', eventData.data);
   }
+
+  ////////////////////////////////////////////////////////////////////////////////////////
+  // UNUSED AT THIS TIME
+  ///////////////////////////////////////////////////////////////////////////////////////
 
   private handleDeviceUpdate(eventData: EventData): void {
     if (!eventData.data) {

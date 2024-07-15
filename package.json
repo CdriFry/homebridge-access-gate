@@ -2,13 +2,13 @@
   "private": false,
   "name": "homebridge-unifi-access-gate",
   "displayName": "Homebridge Unifi Access Gate (G2)",
-  "version": "1.0.1-beta1.4HOTFIX",
+  "version": "1.0.3",
   "author": {
     "name": "CdriFry",
     "url": "https://github.com/cdrifry"
   },
   "homepage": "https://github.com/CdriFry/homebridge-access-gate",
-  "description": "PRE-ALPHA - Homebridge plugin for Unifi Access with Sensors - Support for DOOR-HUB (G2) with the new Access API provided by Ubiquiti",
+  "description": "PRE-ALPHA (Do not install for stable installation - This is in developpement stage) - Homebridge plugin for Unifi Access with Sensors - Support for DOOR-HUB (G2) with the new Access API provided by Ubiquiti",
   "main": "dist/index.js",
   "scripts": {
     "build": "rimraf ./dist && tsc",
@@ -27,7 +27,11 @@
   "keywords": [
     "homebridge-plugin",
     "homebridge-plugin-access-gate",
-    "homebridge-plugin-access"
+    "homebridge-plugin-access",
+    "access plugin",
+    "access",
+    "unifi-access",
+    "unifi access"
   ],
   "license": "Apache-2.0",
   "dependencies": {
