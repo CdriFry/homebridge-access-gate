@@ -35,8 +35,8 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
   private pendingTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
   private apiToken: string;
-  private reconnectDelay: number = 1000;
-  private readonly maxReconnectDelay: number = 30000;
+  private reconnectDelay = 1000;
+  private readonly maxReconnectDelay = 30000;
 
   public logWarning(message: string): void {
     this.log.warn(message);
