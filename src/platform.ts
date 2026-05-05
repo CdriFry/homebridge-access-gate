@@ -35,6 +35,8 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
   private pendingTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
   private apiToken: string;
+  private reconnectDelay: number = 1000;
+  private readonly maxReconnectDelay: number = 30000;
 
   public logWarning(message: string): void {
     this.log.warn(message);
@@ -60,7 +62,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
   initAxiosInstance(): void {
     this.axiosInstance = axios.create({
       httpsAgent: new https.Agent({
-        rejectUnauthorized: false,
+        rejectUnauthorized: true,
       }),
     });
   }
@@ -80,7 +82,7 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
       headers: {
         Authorization: `Bearer ${this.config.apiToken}`,
       },
-      rejectUnauthorized: false,
+      rejectUnauthorized: true,
     });
 
     this.ws.on('open', () => {
@@ -135,57 +137,55 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
   /////////////////////////////////////////////////////////////////////////////////////////
 
   reconnectWebSocket(): void {
-    // Close existing WebSocket connection if it exists
     if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
       this.ws.close();
     }
 
-    const wsBaseUrl = this.config.baseUrl.replace(/^https:\/\//, 'wss://');
-    const path = '/api/v1/developer/devices/notifications';
+    this.log.info(`WebSocket reconnecting in ${this.reconnectDelay / 1000}s...`);
 
-    // Ajouter le chemin spécifique
-    const wsUrl = `${wsBaseUrl}${path}`;
+    setTimeout(() => {
+      this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
 
-    // Initialize a new WebSocket connection
-    this.ws = new WebSocket(wsUrl, {
-      headers: {
-        Authorization: `Bearer ${this.config.apiToken}`,
-      },
-      rejectUnauthorized: false,
-    });
+      const wsBaseUrl = this.config.baseUrl.replace(/^https:\/\//, 'wss://');
+      const wsUrl = `${wsBaseUrl}/api/v1/developer/devices/notifications`;
 
-    this.ws.on('open', () => {
-      this.log.info('WebSocket reconnected');
-      // Reset lastHelloTime when WebSocket is reconnected
-      this.lastHelloTime = Date.now();
-    });
+      this.ws = new WebSocket(wsUrl, {
+        headers: {
+          Authorization: `Bearer ${this.config.apiToken}`,
+        },
+        rejectUnauthorized: true,
+      });
 
-    this.ws.on('message', (data: WebSocket.Data) => {
-      try {
-        const eventData = JSON.parse(data.toString());
-        if (eventData.data === 'Hello') {
-          this.handleHelloEvent();
-        } else {
-          this.handleEvent(eventData);
-        }
-        // Update lastHelloTime on every 'Hello' message received
+      this.ws.on('open', () => {
+        this.log.info('WebSocket reconnected');
         this.lastHelloTime = Date.now();
-      } catch (error) {
-        this.log.error('Error parsing WebSocket message:', error);
-      }
-    });
+        this.reconnectDelay = 1000;
+      });
 
-    this.ws.on('error', (error: Error) => {
-      this.log.error('WebSocket error:', error);
-      // Handle error and attempt to reconnect
-      this.reconnectWebSocket();
-    });
+      this.ws.on('message', (data: WebSocket.Data) => {
+        try {
+          const eventData = JSON.parse(data.toString());
+          if (eventData.data === 'Hello') {
+            this.handleHelloEvent();
+          } else {
+            this.handleEvent(eventData);
+          }
+          this.lastHelloTime = Date.now();
+        } catch (error) {
+          this.log.error('Error parsing WebSocket message:', error);
+        }
+      });
 
-    this.ws.on('close', () => {
-      this.log.info('WebSocket connection closed');
-      // Automatically attempt to reconnect
-      this.reconnectWebSocket();
-    });
+      this.ws.on('error', (error: Error) => {
+        this.log.error('WebSocket error:', error);
+        this.reconnectWebSocket();
+      });
+
+      this.ws.on('close', () => {
+        this.log.info('WebSocket connection closed');
+        this.reconnectWebSocket();
+      });
+    }, this.reconnectDelay);
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////
@@ -323,9 +323,9 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
         throw new Error(`Failed to unlock door. Status: ${response.status}`);
       }
 
-      console.log('Door unlocked successfully, if not unlocked in real, reboot now and retry.');
+      this.log.info('Door unlocked successfully, if not unlocked in real, reboot now and retry.');
     } catch (error: any) {
-      console.error('Error unlocking door:', error.message);
+      this.log.error('Error unlocking door:', error.message);
       throw error; // Propagez l'erreur pour une gestion supplémentaire si nécessaire
     }
   }

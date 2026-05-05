@@ -35,13 +35,11 @@
   ],
   "license": "Apache-2.0",
   "dependencies": {
-    "axios": "^0.28.0",
-    "rimraf": "^5.0.8",
-    "typescript": "^4.4.4",
+    "axios": "^1.9.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/node": "^16.11.7",
+    "@types/node": "^20.0.0",
     "@types/ws": "^8.5.10",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
     "@typescript-eslint/parser": "^5.0.0",
@@ -51,7 +49,7 @@
     "prettier": "^2.4.1",
     "homebridge": "^1.8.2",
     "nodemon": "^3.1.2",
-    "rimraf": "^5.0.7",
+    "rimraf": "^5.0.8",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   },
