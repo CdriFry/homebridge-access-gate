@@ -22,6 +22,12 @@
         "format": "uri",
         "required": true,
         "default": "https://ip_controller:12445"
+      },
+      "allowSelfSignedCert": {
+        "title": "Allow Self-Signed Certificate",
+        "type": "boolean",
+        "default": true,
+        "description": "Allow self-signed TLS certificates (required for most UniFi controllers). Disable only if your controller uses a valid CA-signed certificate."
       }
     }
   }

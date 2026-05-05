@@ -60,10 +60,9 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
   }
 
   initAxiosInstance(): void {
+    const rejectUnauthorized = !(this.config.allowSelfSignedCert ?? true);
     this.axiosInstance = axios.create({
-      httpsAgent: new https.Agent({
-        rejectUnauthorized: true,
-      }),
+      httpsAgent: new https.Agent({ rejectUnauthorized }),
     });
   }
 
@@ -78,11 +77,12 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
     // Ajouter le chemin spécifique
     const wsUrl = `${wsBaseUrl}${path}`;
     // Initialize WebSocket connection
+    const rejectUnauthorized = !(this.config.allowSelfSignedCert ?? true);
     this.ws = new WebSocket(wsUrl, {
       headers: {
         Authorization: `Bearer ${this.config.apiToken}`,
       },
-      rejectUnauthorized: true,
+      rejectUnauthorized,
     });
 
     this.ws.on('open', () => {
@@ -149,11 +149,12 @@ export default class UnifiAccessPlatform implements DynamicPlatformPlugin {
       const wsBaseUrl = this.config.baseUrl.replace(/^https:\/\//, 'wss://');
       const wsUrl = `${wsBaseUrl}/api/v1/developer/devices/notifications`;
 
+      const rejectUnauthorized = !(this.config.allowSelfSignedCert ?? true);
       this.ws = new WebSocket(wsUrl, {
         headers: {
           Authorization: `Bearer ${this.config.apiToken}`,
         },
-        rejectUnauthorized: true,
+        rejectUnauthorized,
       });
 
       this.ws.on('open', () => {
